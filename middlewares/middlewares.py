@@ -46,6 +46,13 @@ class LuminatyProxyMiddleware(object):
             self.username = PROXY_USERNAME
             self.password = PROXY_PASSWORD
             self.super_proxy_url = PROXY
+        # Load free proxy rotation
+        try:
+            with open('free-proxy-list.txt') as f:
+                self.proxy_list = [l.strip() for l in f if l.strip() and not l.startswith('#')]
+        except Exception:
+            self.proxy_list = []
+
 
     def process_request(self, request, spider):
 
@@ -81,11 +88,16 @@ class LuminatyProxyMiddleware(object):
                 ip
             )
 
-        # Add proxy to request
-        request.meta["proxy"] = self.super_proxy_url % (
-            username,
-            self.password
-        )
+        # Rotate through free proxy list if available
+        if getattr(self, 'proxy_list', []) and getattr(spider, 'use_proxy', None) != 'VIP':
+            from random import choice
+            request.meta['proxy'] = choice(self.proxy_list)
+        else:
+            # Add proxy to request (Luminati default)
+            request.meta["proxy"] = self.super_proxy_url % (
+                username,
+                self.password
+            )
 
         # Remove old authorization if exist
         if request.headers.get("Proxy-Authorization"):
@@ -197,7 +209,7 @@ class CloudflareV2BypassMiddleware(object):
         self.use_proxy = getattr(crawler.spider, "use_proxy", False)
         self.allow_retry = getattr(crawler.spider, "cloudfare_allow_retry", 10)
         self.delay = getattr(crawler.spider, "cloudfare_delay", 5)
-        self.fraudulent_threshold = getattr(crawler.spider, "fraudulent_threshold", 50)
+        self.fraudulent_threshold = getattr(crawler.spider, "fraudulent_threshold", 100)
         self.ip_batch_size = getattr(crawler.spider, "ip_batch_size", 20)
 
         if self.use_proxy == 'VIP':
@@ -410,3 +422,13 @@ class CloudflareV2BypassMiddleware(object):
         cookies = self.load_cookies(response.request, False)
 
         return cookies, headers, ip
+
+
+from scrapy.exceptions import IgnoreRequest
+
+
+class MediaFilterMiddleware(object):
+    def process_request(self, request, spider):
+        if hasattr(spider, 'IGNORE_EXTS') and request.url.lower().endswith(spider.IGNORE_EXTS):
+            spider.logger.debug(f"Ignoring media URL: {request.url}")
+            raise IgnoreRequest(f"Ignoring media URL: {request.url}")

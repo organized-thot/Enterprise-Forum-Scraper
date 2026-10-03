@@ -183,20 +183,52 @@ def run(kwargs=None):
     ##############################################
     print("Combining JSON files...")
     combined_json_file = os.path.abspath(os.path.join(combo_folder, f"{site}-{date}.json"))
-    cmd = f"find . -name \\*.json -exec cat {{}} + | jq -c . | sort -us -o {combined_json_file}"
-
+    
+    # Pure Python replacement for: find . -name \*.json -exec cat {} + | jq -c . | sort -us -o combined_json_file
+    import json
+    all_objects = []
+    decoder = json.JSONDecoder()
+    
+    def skip_whitespace(s, pos):
+        while pos < len(s) and s[pos].isspace():
+            pos += 1
+        return pos
+    
+    for root, dirs, files in os.walk(parse_dir):
+        for filename in files:
+            if filename.endswith('.json'):
+                filepath = os.path.join(root, filename)
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    pos = 0
+                    while pos < len(content):
+                        pos = skip_whitespace(content, pos)
+                        if pos >= len(content):
+                            break
+                        obj, pos = decoder.raw_decode(content, idx=pos)
+                        all_objects.append(obj)
+    
+    # Deduplicate by canonical JSON string representation
+    seen = set()
+    unique_objects = []
+    for obj in all_objects:
+        obj_str = json.dumps(obj, sort_keys=True, separators=(',', ':'))
+        if obj_str not in seen:
+            seen.add(obj_str)
+            unique_objects.append(obj)
+    
+    # Sort by canonical JSON representation
+    unique_objects.sort(key=lambda obj: json.dumps(obj, sort_keys=True, separators=(',', ':')))
+    
+    # Write combined file (each object as compact JSON line)
+    with open(combined_json_file, 'w', encoding='utf-8') as f:
+        for obj in unique_objects:
+            f.write(json.dumps(obj, separators=(',', ':')) + '\n')
+    
+    # Validate output
     try:
-        subprocess.run(cmd,
-                       cwd=parse_dir,
-                       check=True,
-                       shell=True,
-                       stderr=subprocess.PIPE,
-                       )
-    except subprocess.CalledProcessError as err:
-        print(
-            "ERROR: JQ/SORT exited with non-zero exit code: retcode=%d, err=%s"
-            % (err.returncode, err.stderr)
-        )
+        validate_output_json_file(combined_json_file)
+    except Exception as err:
         exit_func(2, err)
 
     validate_output_json_file(combined_json_file)

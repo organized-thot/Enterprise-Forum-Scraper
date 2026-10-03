@@ -26,7 +26,7 @@ class IpHandler(object):
         )
         self.use_proxy = kwargs.get("use_proxy")
         self.logger = kwargs.get("logger")
-        self.fraudulent_threshold = kwargs.get("fraudulent_threshold", 50)
+        self.fraudulent_threshold = kwargs.get("fraudulent_threshold", 100)
         self.ip_batch_size = kwargs.get("ip_batch_size", 20)
         self.country = kwargs.get("proxy_countries")
         self.city = kwargs.get("proxy_cities")
@@ -171,7 +171,7 @@ class IpHandler(object):
 
         while True:
             ip, score, lum_ip = self.loop_good_ip()
-            if score >= self.fraudulent_threshold:
+            if score > self.fraudulent_threshold:
                 self.logger.info(
                     "Ip %s has fraudulent score of %s, "
                     "above threshold %s, aborting." % (

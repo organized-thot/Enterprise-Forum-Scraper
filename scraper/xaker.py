@@ -86,7 +86,7 @@ class XakerSpider(SitemapSpider):
         cookies, ip = self.get_cloudflare_cookies(
             base_url=self.base_url,
             proxy=True,
-            fraud_check=True
+            fraud_check=False
         )
 
 
@@ -125,7 +125,7 @@ class XakerSpider(SitemapSpider):
             cookies, ip = self.get_cloudflare_cookies(
                 base_url=self.base_url,
                 proxy=True,
-                fraud_check=True
+                fraud_check=False
             )
 
         yield from self.start_requests(cookies=cookies, ip=ip)

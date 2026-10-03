@@ -87,7 +87,7 @@ class CrackedToSpider(SitemapSpider):
         cookies, ip = self.get_cloudflare_cookies(
             base_url=self.base_url,
             proxy=True,
-            fraud_check=True
+            fraud_check=False
         )
 
         # Init request kwargs and meta

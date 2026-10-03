@@ -115,8 +115,18 @@ class Scraper:
         return stats
 
 
+import sys
+from cli_parser import CliParser
+
 def main():
-    Scraper().do_scrape()
+    cli = CliParser(arguments=[
+        {"args": ["--template"], "kwargs": {"help": "template name"}},
+        {"args": ["--list"], "kwargs": {"action": "store_true", "help": "list scrapers"}},
+        {"args": ["--output"], "kwargs": {"help": "output path"}},
+        {"args": ["--rescan"], "kwargs": {"action": "store_true", "help": "rescan"}}
+    ])
+    kwargs = cli.get_args()
+    Scraper(kwargs).do_scrape()
 
 
 if __name__ == '__main__':

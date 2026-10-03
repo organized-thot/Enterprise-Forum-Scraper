@@ -98,7 +98,7 @@ class HackForumsSpider(SitemapSpider):
             cookies, ip = self.get_cloudflare_cookies(
                 base_url=self.login_url,
                 proxy=True,
-                fraud_check=True
+                fraud_check=False
             )
 
         yield from self.pass_cloudflare(cookies=cookies, ip=ip)
@@ -116,7 +116,7 @@ class HackForumsSpider(SitemapSpider):
         cookies, ip = self.get_cloudflare_cookies(
             base_url=self.login_url,
             proxy=True,
-            fraud_check=True
+            fraud_check=False
         )
         
         print(f'IP Address: {ip}')

@@ -450,7 +450,29 @@ class FromDateScrapper(BaseScrapper, SiteMapScrapper):
 ###############################################################################
 
 
+
 class BypassCloudfareSpider(scrapy.Spider):
+    IGNORE_EXTS = (
+        '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tif', '.tiff', '.svg', '.webp',
+        '.mp4', '.avi', '.mov', '.wmv', '.mkv', '.flv', '.m4v', '.mpg', '.mpeg',
+        '.mp3', '.wav', '.ogg', '.flac', '.aac', '.wma'
+    )
+
+    def is_media_url(self, url):
+        return url.lower().endswith(self.IGNORE_EXTS)
+    def yield_request(self, request_or_dict, **kwargs):
+        if isinstance(request_or_dict, scrapy.Request):
+            url = request_or_dict.url
+        elif isinstance(request_or_dict, dict):
+            url = request_or_dict.get('url')
+        else:
+            url = None
+            
+        if url and self.is_media_url(url):
+            return
+            
+        yield request_or_dict
+
     use_proxy = "On"
     use_cloudflare_v2_bypass = None
     use_rotating_ip = None
@@ -482,6 +504,7 @@ class BypassCloudfareSpider(scrapy.Spider):
                 'scrapy.downloadermiddlewares.redirect.MetaRefreshMiddleware': 20,
                 'scrapy.downloadermiddlewares.redirect.RedirectMiddleware': 40,
                 'scrapy.downloadermiddlewares.cookies.CookiesMiddleware': 50,
+                'middlewares.middlewares.MediaFilterMiddleware': 100,
             }
 
             # Proxy settings
@@ -548,7 +571,7 @@ class BypassCloudfareSpider(scrapy.Spider):
         self.logger.info("Captcha solved correctly .")
         return bool(element)
 
-    def get_cloudflare_cookies(self, base_url=None, proxy=True, fraud_check=True):
+    def get_cloudflare_cookies(self, base_url=None, proxy=True, fraud_check=False):
         # Load proxy
         if self.use_proxy == 'VIP':
             proxy_username = VIP_PROXY_USERNAME
@@ -594,7 +617,10 @@ class BypassCloudfareSpider(scrapy.Spider):
             try_num += 1
 
             # Fraud check - get good IP address
-            ip = self.ip_handler.get_good_ip()
+            if fraud_check:
+                ip = self.ip_handler.get_good_ip()
+            else:
+                ip = "10.10.10.10"
 
             # Init proxy
             proxy = super_proxy % (
@@ -613,15 +639,20 @@ class BypassCloudfareSpider(scrapy.Spider):
             }
 
             try:
-                # cf_bypasser.adapters['https://'].ssl_context.set_ecdh_curve('secp521r1')
+
                 cf_bypasser.proxies = proxies
                 response = cf_bypasser.get(base_url)
             except requests.exceptions.ProxyError as e:
                 if "Could not resolve host" in str(e):
                     self.logger.exception("ProxyError: could not resolve host.")
                     raise CloseSpider(reason='site_is_down')
-                self.logger.exception('Try #%s to bypass CloudFlare failed due to ProxyError', try_num)
-                continue
+                self.logger.info('Try #%s: proxy failed (%s), falling back to direct', try_num, e)
+                try:
+                    cf_bypasser.proxies = None
+                    response = cf_bypasser.get(base_url)
+                except Exception:
+                    self.logger.exception('Try #%s direct connection failed', try_num)
+                    continue
             except Exception:
                 self.logger.exception('Try #%s to bypass CloudFlare failed', try_num)
                 continue
@@ -970,7 +1001,7 @@ class SitemapSpider(BypassCloudfareSpider):
 
         self.ip_handler = IpHandler(
             logger=self.logger,
-            fraudulent_threshold=getattr(self, "fraudulent_threshold", 50),
+            fraudulent_threshold=getattr(self, "fraudulent_threshold", 100),
             ip_batch_size=getattr(self, "ip_batch_size", 20),
             use_proxy=self.use_proxy,
             proxy_countries=self.proxy_countries,
@@ -1550,22 +1581,22 @@ class SitemapSpider(BypassCloudfareSpider):
 
         # Branch choices requests
         if self.sitemap_url:
-            yield scrapy.Request(
+            yield from self.yield_request(scrapy.Request(
                 url=self.sitemap_url,
                 headers=self.headers,
                 callback=self.parse_sitemap,
                 errback=self.check_site_error,
                 dont_filter=True,
                 meta=meta
-            )
+            ))
         else:
-            yield Request(
+            yield from self.yield_request(Request(
                 url=self.base_url,
                 headers=self.headers,
                 errback=self.check_site_error,
                 dont_filter=True,
                 meta=meta
-            )
+            ))
 
     def parse_sitemap(self, response):
         """
@@ -1586,12 +1617,12 @@ class SitemapSpider(BypassCloudfareSpider):
         self.crawler.stats.set_value("mainlist/mainlist_count", len(all_forum))
 
         for forum in all_forum:
-            yield Request(
+            yield from self.yield_request(Request(
                 url=forum,
                 headers=self.headers,
                 callback=self.parse_sitemap_forum,
                 meta=self.synchronize_meta(response)
-            )
+            ))
 
     def parse_sitemap_forum(self, response):
         """
@@ -1628,7 +1659,7 @@ class SitemapSpider(BypassCloudfareSpider):
         thread_url = self.parse_thread_url(
             selector.xpath(self.thread_url_xpath).extract_first()
         )
-        if not thread_url:
+        if not thread_url or self.is_media_url(thread_url):
             return
         thread_date = self.parse_thread_date(
             selector.xpath(self.thread_lastmod_xpath).extract_first()

@@ -88,7 +88,7 @@ class LolzSpider(SitemapSpider):
         cookies, ip = self.get_cookies(
             base_url=self.base_url,
             proxy=self.use_proxy,
-            fraud_check=True,
+            fraud_check=False,
         )
 
         self.logger.info(f'COOKIES: {cookies}')
